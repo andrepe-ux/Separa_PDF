@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Separar PDFs</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#d3d3d3] p-6 text-lg">
+  <div class="max-w-3xl mx-auto bg-white rounded-2xl shadow-lg p-6">
+    <div class="flex justify-between items-center mb-4">
+      <h1 id="title" class="text-2xl font-bold">Separador de PDFs</h1>
+      <select id="lang" class="border rounded-lg p-2 text-lg">
+        <option value="es">🇪🇸 Español (ES)</option>
+        <option value="pt">🇵🇹 Português (PT)</option>
+      </select>
+    </div>
+
+    <p id="description" class="text-gray-700 mb-4"></p>
+
+    <!-- Área de upload/drag&drop -->
+    <label class="block mb-3 border-2 border-dashed border-gray-400 rounded-xl p-8 text-center cursor-pointer bg-gray-50 hover:bg-gray-100 transition">
+      <span id="labelFile" class="block mb-2 font-medium"></span>
+      <span id="dragMessage" class="block text-gray-500 mb-4">Drag & Drop PDF aquí / Arraste e solte o PDF aqui</span>
+      <input id="file" type="file" accept="application/pdf" class="hidden">
+      <div class="inline-block bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-lg">Escolher PDF</div>
+    </label>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+      <label class="block">
+        <span id="labelMode"></span>
+        <select id="mode" class="mt-1 block w-full border rounded-lg p-2 text-lg">
+          <option value="every">Un PDF por cada página</option>
+          <option value="range">Extraer rangos específicos</option>
+        </select>
+      </label>
+
+      <label class="block">
+        <span id="labelRanges"></span>
+        <input id="ranges" type="text" class="mt-1 block w-full border rounded-lg p-2 text-lg" placeholder="1-2,4,6-8">
+      </label>
+    </div>
+
+    <label class="block mb-3">
+      <span id="labelPrefix"></span>
+      <input id="prefix" type="text" class="mt-1 block w-full border rounded-lg p-2 text-lg" placeholder="ej: Documento">
+    </label>
+
+    <label class="block mb-3">
+      <span id="labelZip"></span>
+      <input id="zipname" type="text" class="mt-1 block w-full border rounded-lg p-2 text-lg" placeholder="ej: Resultado.zip">
+    </label>
+
+    <div class="flex gap-3">
+      <button id="run" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl text-lg">Separar PDF</button>
+      <button id="reset" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-xl text-lg">Reiniciar</button>
+    </div>
+
+    <div id="status" class="mt-4 text-gray-800 font-medium flex items-center gap-2 text-lg"></div>
+
+    <hr class="my-6">
+    <h3 class="font-semibold mb-2" id="notesTitle"></h3>
+    <ul class="list-disc pl-5 text-gray-700" id="notesList"></ul>
+  </div>
+
+  <!-- Bibliotecas -->
+  <script src="https://unpkg.com/pdf-lib/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+  <script>
+    const langSelect = document.getElementById('lang');
+    const texts = {
+      es: {
+        title: 'Separador de PDFs',
+        description: 'Sube un PDF y separa páginas en archivos individuales o rangos. Todo se procesa localmente en tu navegador.',
+        labelFile: 'Seleccionar archivo PDF',
+        labelMode: 'Modo de separación',
+        labelRanges: 'Rangos (ej: 1-2,4,6-8)',
+        labelPrefix: 'Prefijo para nombre de archivos',
+        labelZip: 'Nombre del archivo ZIP',
+        notesTitle: 'Notas',
+        notesList: '<li>Si el PDF es muy grande, podría tardar más y consumir memoria.</li><li>El resultado se descarga como archivo <strong>.zip</strong> con los PDFs separados.</li>',
+        processing: 'Procesando...',
+        ready: '¡Listo!',
+        error: 'Error:'
+      },
+      pt: {
+        title: 'Separador de PDFs',
+        description: 'Carregue um PDF e separe páginas em arquivos individuais ou intervalos. Tudo é processado localmente no seu navegador.',
+        labelFile: 'Selecionar ficheiro PDF',
+        labelMode: 'Modo de separação',
+        labelRanges: 'Intervalos (ex: 1-2,4,6-8)',
+        labelPrefix: 'Prefixo para nome dos ficheiros',
+        labelZip: 'Nome do ficheiro ZIP',
+        notesTitle: 'Notas',
+        notesList: '<li>Se o PDF for muito grande, pode demorar mais e consumir memória.</li><li>O resultado é descarregado como um arquivo <strong>.zip</strong> com os PDFs separados.</li>',
+        processing: 'A processar...',
+        ready: 'Pronto!',
+        error: 'Erro:'
+      }
+    };
+
+    function updateLang(lang){
+      const t = texts[lang];
+      document.getElementById('title').innerText = t.title;
+      document.getElementById('description').innerText = t.description;
+      document.getElementById('labelFile').innerText = t.labelFile;
+      document.getElementById('labelMode').innerText = t.labelMode;
+      document.getElementById('labelRanges').innerText = t.labelRanges;
+      document.getElementById('labelPrefix').innerText = t.labelPrefix;
+      document.getElementById('labelZip').innerText = t.labelZip;
+      document.getElementById('notesTitle').innerText = t.notesTitle;
+      document.getElementById('notesList').innerHTML = t.notesList;
+    }
+    langSelect.addEventListener('change', e => updateLang(e.target.value));
+
+    const fileInput = document.getElementById('file');
+    const runBtn = document.getElementById('run');
+    const resetBtn = document.getElementById('reset');
+    const status = document.getElementById('status');
+    const modeSelect = document.getElementById('mode');
+    const rangesInput = document.getElementById('ranges');
+    const prefixInput = document.getElementById('prefix');
+    const zipInput = document.getElementById('zipname');
+
+    // Drag & Drop
+    const dropArea = fileInput.parentElement;
+    dropArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropArea.classList.add('bg-gray-200');
+    });
+    dropArea.addEventListener('dragleave', () => {
+      dropArea.classList.remove('bg-gray-200');
+    });
+    dropArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropArea.classList.remove('bg-gray-200');
+      if(e.dataTransfer.files.length){
+        fileInput.files = e.dataTransfer.files;
+      }
+    });
+
+    function parseRanges(text, pageCount){
+      if(!text) return [];
+      const parts = text.split(',').map(p=>p.trim()).filter(Boolean);
+      const ranges = [];
+      for(const p of parts){
+        if(p.includes('-')){
+          const [a,b] = p.split('-').map(x=>parseInt(x,10));
+          if(isNaN(a) || isNaN(b)) continue;
+          const start = Math.max(1, Math.min(a,b));
+          const end = Math.min(pageCount, Math.max(a,b));
+          ranges.push({start,end});
+        } else {
+          const n = parseInt(p,10);
+          if(isNaN(n)) continue;
+          const valid = Math.min(Math.max(n,1), pageCount);
+          ranges.push({start:valid,end:valid});
+        }
+      }
+      return ranges;
+    }
+
+    runBtn.addEventListener('click', async ()=>{
+      const lang = langSelect.value;
+      const t = texts[lang];
+      const f = fileInput.files && fileInput.files[0];
+      if(!f){ status.innerText = 'Selecciona un archivo.'; return; }
+      status.innerText = t.processing;
+
+      try{
+        const arrayBuffer = await f.arrayBuffer();
+        const srcDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+        const pageCount = srcDoc.getPageCount();
+
+        const mode = modeSelect.value;
+        let tasks = [];
+
+        if(mode === 'every'){
+          for(let i=0;i<pageCount;i++) tasks.push({start:i+1,end:i+1});
+        } else {
+          const ranges = parseRanges(rangesInput.value, pageCount);
+          if(ranges.length === 0){ status.innerText = 'Introduce rangos válidos.'; return; }
+          tasks = ranges;
+        }
+
+        const zip = new JSZip();
+        let idx = 0;
+        const prefix = prefixInput.value.trim() || f.name.replace(/\.pdf$/i,'');
+
+        for(const r of tasks){
+          idx++;
+          const outPdf = await PDFLib.PDFDocument.create();
+          const pageIndices = [];
+          for(let p = r.start-1; p <= r.end-1; p++) pageIndices.push(p);
+          const copied = await outPdf.copyPages(srcDoc, pageIndices);
+          copied.forEach(pg => outPdf.addPage(pg));
+
+          const bytes = await outPdf.save();
+          const name = (r.start === r.end)
+            ? `${prefix}_p${String(r.start).padStart(3,'0')}.pdf`
+            : `${prefix}_${r.start}-${r.end}.pdf`;
+          zip.file(name, bytes);
+        }
+
+        const content = await zip.generateAsync({type:'blob'});
+        const zipName = zipInput.value.trim() || (prefix + '_split.zip');
+
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(content);
+        link.download = zipName.endsWith('.zip') ? zipName : zipName + '.zip';
+        link.click();
+        URL.revokeObjectURL(link.href);
+
+        status.innerHTML = `<span class="text-green-700">✔️ ${t.ready}</span>`;
+      } catch(err){
+        console.error(err);
+        status.innerText = texts[langSelect.value].error + ' ' + (err.message || err);
+      }
+    });
+
+    resetBtn.addEventListener('click', ()=>{
+      fileInput.value = '';
+      rangesInput.value = '';
+      prefixInput.value = '';
+      zipInput.value = '';
+      status.innerText = '';
+    });
+
+    // init default lang
+    updateLang('es');
+  </script>
+</body>
+</html>
