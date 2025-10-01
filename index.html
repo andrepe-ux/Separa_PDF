@@ -19,7 +19,7 @@
     <p id="description" class="text-gray-700 mb-4"></p>
 
     <!-- Área de upload/drag&drop -->
-    <label class="block mb-3 border-2 border-dashed border-gray-400 rounded-xl p-8 text-center cursor-pointer bg-gray-50 hover:bg-gray-100 transition">
+    <label id="dropArea" class="block mb-3 border-2 border-dashed border-gray-400 rounded-xl p-8 text-center cursor-pointer bg-gray-50 hover:bg-gray-100 transition">
       <span id="labelFile" class="block mb-2 font-medium"></span>
       <span id="dragMessage" class="block text-gray-500 mb-4">Drag & Drop PDF aquí / Arraste e solte o PDF aqui</span>
       <input id="file" type="file" accept="application/pdf" class="hidden">
@@ -82,7 +82,8 @@
         notesList: '<li>Si el PDF es muy grande, podría tardar más y consumir memoria.</li><li>El resultado se descarga como archivo <strong>.zip</strong> con los PDFs separados.</li>',
         processing: 'Procesando...',
         ready: '¡Listo!',
-        error: 'Error:'
+        error: 'Error:',
+        loaded: 'Archivo cargado'
       },
       pt: {
         title: 'Separador de PDFs',
@@ -96,7 +97,8 @@
         notesList: '<li>Se o PDF for muito grande, pode demorar mais e consumir memória.</li><li>O resultado é descarregado como um arquivo <strong>.zip</strong> com os PDFs separados.</li>',
         processing: 'A processar...',
         ready: 'Pronto!',
-        error: 'Erro:'
+        error: 'Erro:',
+        loaded: 'Ficheiro carregado'
       }
     };
 
@@ -122,9 +124,24 @@
     const rangesInput = document.getElementById('ranges');
     const prefixInput = document.getElementById('prefix');
     const zipInput = document.getElementById('zipname');
+    const dropArea = document.getElementById('dropArea');
+    const dragMessage = document.getElementById('dragMessage');
+
+    // Função para mostrar arquivo carregado dentro da área de Drag & Drop
+    async function handleFileLoad(file){
+      if(!file) return;
+      const lang = langSelect.value;
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+        const pageCount = pdfDoc.getPageCount();
+        dragMessage.innerHTML = `📄 ${texts[lang].loaded}: <strong>${file.name}</strong> (${pageCount} páginas)`;
+      } catch(err){
+        dragMessage.innerText = texts[lang].error + ' ' + (err.message || err);
+      }
+    }
 
     // Drag & Drop
-    const dropArea = fileInput.parentElement;
     dropArea.addEventListener('dragover', (e) => {
       e.preventDefault();
       dropArea.classList.add('bg-gray-200');
@@ -137,8 +154,12 @@
       dropArea.classList.remove('bg-gray-200');
       if(e.dataTransfer.files.length){
         fileInput.files = e.dataTransfer.files;
+        handleFileLoad(fileInput.files[0]);
       }
     });
+
+    // Seleção via input
+    fileInput.addEventListener('change', () => handleFileLoad(fileInput.files[0]));
 
     function parseRanges(text, pageCount){
       if(!text) return [];
@@ -224,6 +245,9 @@
       rangesInput.value = '';
       prefixInput.value = '';
       zipInput.value = '';
+      dragMessage.innerText = langSelect.value === 'pt'
+        ? 'Drag & Drop PDF aquí / Arraste e solte o PDF aqui'
+        : 'Drag & Drop PDF aquí / Arraste e solte o PDF aqui';
       status.innerText = '';
     });
 
